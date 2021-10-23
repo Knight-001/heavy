@@ -92,6 +92,8 @@ let l = {
 	times: {
 		rain: [],
 		image: [],
+		conv: [],
+		frame: [],
 		computeLog: []
 	}
 };
@@ -99,21 +101,35 @@ let l = {
 l.addLog = function (type, ts) {
 	switch (type) {
 		case "r":
-		case "rain":
+		case "rain": // Time used to calculate full screen worth of rain and sea
 			l.times.rain.push(ts);
 			if (l.times.rain.length > maxItemsInEachLog) {
 				l.times.rain = l.times.rain.splice(1);
 			}
 			break;
 		case "i":
-		case "image":
+		case "image": // Time used to write the images from img.list on the screen
 			l.times.image.push(ts);
 			if (l.times.image.length > maxItemsInEachLog) {
 				l.times.image = l.times.image.splice(1);
 			}
 			break;
+		case "c":
+		case "conv":// Conversion overhead
+			l.times.conv.push(ts);
+			if (l.times.conv.length > maxItemsInEachLog) {
+				l.times.conv = l.times.conv.splice(1);
+			}
+			break;
+		case "f":
+		case "frame":// Total single frame time
+			l.times.frame.push(ts);
+			if (l.times.frame.length > maxItemsInEachLog) {
+				l.times.frame = l.times.frame.splice(1);
+			}
+			break;
 		case "cl":
-		case "computeLog":
+		case "computeLog": // Total time used on calculating onscreen logs if enabled
 			l.times.computeLog.push(ts);
 			if (l.times.computeLog.length > maxItemsInEachLog) {
 				l.times.computeLog = l.times.computeLog.splice(1);
@@ -123,60 +139,66 @@ l.addLog = function (type, ts) {
 }
 
 l.calcTimings = function (wantString = false) {
-	//Times are in ms
-	let averageRainComputeTime = 0;
-	let loggedRainItems = l.times.rain.length;
-	for (let i of l.times.rain) {
-		averageRainComputeTime += i;
-	}
-	averageRainComputeTime = f.roundWithXZeroes(averageRainComputeTime / loggedRainItems, 6);
-	let averageImageComputeTime = 0;
-	let loggedImageItems = l.times.image.length;
-	for (let i of l.times.image) {
-		averageImageComputeTime += i;
-	}
-	averageImageComputeTime = f.roundWithXZeroes(averageImageComputeTime / loggedImageItems, 6);
-	let averageLogComputeTime = 0;
-	let loggedLogItems = l.times.computeLog.length;
-	for (let i of l.times.computeLog) {
-		averageLogComputeTime += i;
-	}
-	averageLogComputeTime = f.roundWithXZeroes(averageLogComputeTime / loggedLogItems, 6);
+	// Times are in ms
+	let rain = l.calcSingleTime(l.times.rain);
+	let image = l.calcSingleTime(l.times.image);
+	let conv = l.calcSingleTime(l.times.conv);
+	let log = l.calcSingleTime(l.times.computeLog);
+	let frameTime = l.calcSingleTime(l.times.frame);
+
 	if (wantString) {
-		return "averageRainComputeTime: \t" + averageRainComputeTime + "ms\t(on " + loggedRainItems + " samples)\n" +
-			"averageImageComputeTime:\t" + averageImageComputeTime + "ms\t(on " + loggedImageItems + " samples)\n" +
-			"averageLogComputeTime:  \t" + averageLogComputeTime + "ms\t(on " + loggedLogItems + " samples)";
+		return "averageRainComputeTime: \t" + rain.averageComputeTime + "ms\t(on " + rain.loggedItems + " samples)\n" +
+			"averageImageComputeTime:\t" + image.averageComputeTime + "ms\t(on " + image.loggedItems + " samples)\n" +
+			"averageConvComputeTime:  \t" + conv.averageComputeTime + "ms\t(on " + conv.loggedItems + " samples)\n" +
+			"averageLogComputeTime:  \t" + log.averageComputeTime + "ms\t(on " + log.loggedItems + " samples)\n" +
+			"averageFrameComputeTime:  \t" + frameTime.averageComputeTime + "ms\t(on " + frameTime.loggedItems + " samples)";
 	}
 	return {
-		averageRainComputeTime: averageRainComputeTime,
-		loggedRainItems: loggedRainItems,
-		averageImageComputeTime: averageImageComputeTime,
-		loggedImageItems: loggedImageItems,
-		averageLogComputeTime: averageLogComputeTime,
-		loggedLogItems: loggedLogItems
+		averageRainComputeTime: rain.averageComputeTime,
+		loggedRainItems: rain.loggedItems,
+		averageImageComputeTime: image.averageComputeTime,
+		loggedImageItems: image.loggedItems,
+		averageConvComputeTime: conv.averageComputeTime,
+		loggedConvItems: conv.loggedItems,
+		averageLogComputeTime: log.averageComputeTime,
+		loggedLogItems: log.loggedItems,
+		averageFrameComputeTime: frameTime.averageComputeTime,
+		loggedFrameItems: frameTime.loggedItems
 	};
+}
+
+l.calcSingleTime = function (thingToCompute) {
+	let averageComputeTime = 0;
+	let loggedItems = thingToCompute.length;
+	for (let i of thingToCompute) {
+		averageComputeTime += i;
+	}
+	// First time it will output NaN as there are no logged items, it's acceptable since the alternatives would be
+	// to implement a check slowing down the processing
+	averageComputeTime = f.roundWithXZeroes(averageComputeTime / loggedItems, 6);
+	return {averageComputeTime: averageComputeTime, loggedItems: loggedItems};
 }
 
 l.printLogTopLeft = function (screen) {
 	let ts = f.getHRTime();
 	let timings = l.calcTimings();
-	let lines = ["avg rain: (" + timings.loggedRainItems + ") " + timings.averageRainComputeTime + "ms",
-		"avg img:  (" + timings.loggedImageItems + ") " + timings.averageImageComputeTime + "ms",
-		"avg log:  (" + timings.loggedLogItems + ") " + timings.averageLogComputeTime + "ms"];
-	let scr = screen.split("\n");
-	if (scr.length >= 3) {
-		for (let y = 0; y < 3; y++) {
-			let line = scr[y].split("");
+	let lines = ["avg rain:  (" + timings.loggedRainItems + ") " + timings.averageRainComputeTime + "ms",
+		"avg img:   (" + timings.loggedImageItems + ") " + timings.averageImageComputeTime + "ms",
+		"avg conv:  (" + timings.loggedConvItems + ") " + timings.averageConvComputeTime + "ms",
+		"avg log:   (" + timings.loggedLogItems + ") " + timings.averageLogComputeTime + "ms",
+		"avg frame: (" + timings.loggedFrameItems + ") " + timings.averageFrameComputeTime + "ms"];
+	if (screen.length >= 5) {
+		for (let y = 0; y < 5; y++) {
+			let line = screen[y];
 			lines[y] = lines[y].split("");
 			for (let x = 0; x < lines[y].length; x++) {
 				if (x < line.length) {
 					line[x] = lines[y][x];
 				}
 			}
-			scr[y] = line.join("");
+			screen[y] = line;
 		}
 	}
-	screen = scr.join("\n");
 	l.addLog("cl", f.getHRDifferenceToNow(ts));
 	return screen;
 }
@@ -263,10 +285,24 @@ function paintScreen(direction) {
 			"\033[33m" + toAdd + "\033[34m";
 	}
 	l.addLog("rain", f.getHRDifferenceToNow(ts));
+	ts = f.getHRTime();
+	// Prepare screen into matrix to avoid computing same thing multiple times for later manipulation
+	screen = screen.split("\n");
+	for (let x = 0; x < screen.length; x++) {
+		screen[x] = screen[x].split("");
+	}
+	let timeDiff = f.getHRDifferenceToNow(ts);
 	if (logs) {
 		screen = l.printLogTopLeft(screen);
 	}
 	screen = superImposeImage(screen);
+	ts = f.getHRTime();
+	// Putting screen back together to write it
+	for (let x = 0; x < screen.length; x++) {
+		screen[x] = screen[x].join("");
+	}
+	screen = screen.join("\n");
+	l.addLog("conv", (timeDiff + f.getHRDifferenceToNow(ts)));
 	process.stdout.write(screen);
 }
 
@@ -288,7 +324,9 @@ async function r() {
 			rainDir = "left";
 		}
 		ticks++;
+		let ts = f.getHRTime();
 		paintScreen(rainDir);
+		l.addLog("frame", (f.getHRDifferenceToNow(ts)));
 		await f.sleep(msSleep);
 	}
 }
@@ -347,7 +385,6 @@ function superImposeImage(screen) {
 	}
 	let offset = img.pos;
 	if (offset >= -(i.totalLength)) { // Check if I can draw at least part of the image
-		let scr = screen.split("\n");
 		let toInsertAt = (sizeX > 30) ? f.getMeXPerOf(70, sizeX) : f.getMeXPerOf(80, sizeX);
 		let colorReset = f.getColor(defaultColor);
 		let posToInsert = toInsertAt - i.frames[img.showingFrame].length;
@@ -356,7 +393,7 @@ function superImposeImage(screen) {
 		}
 		i = i.frames[img.showingFrame];
 		for (let line of i) {
-			let lineToChange = scr[posToInsert].split("");
+			let lineToChange = screen[posToInsert];
 			for (let x = 0; x < line[1].length; x++) {
 				let charCommand = line[1][x];
 				let imgChar = charCommand[1];
@@ -373,10 +410,9 @@ function superImposeImage(screen) {
 					}
 				}
 			}
-			scr[posToInsert] = lineToChange.join("");
+			screen[posToInsert] = lineToChange;
 			posToInsert++;
 		}
-		screen = scr.join("\n");
 	}
 	if (ticks % 2 === 0) {
 		// Move image every other frame
