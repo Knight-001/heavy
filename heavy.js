@@ -115,14 +115,14 @@ l.addLog = function (type, ts) {
 			}
 			break;
 		case "c":
-		case "conv":// Conversion overhead
+		case "conv": // Conversion overhead
 			l.times.conv.push(ts);
 			if (l.times.conv.length > maxItemsInEachLog) {
 				l.times.conv = l.times.conv.splice(1);
 			}
 			break;
 		case "f":
-		case "frame":// Total single frame time
+		case "frame": // Total single frame time
 			l.times.frame.push(ts);
 			if (l.times.frame.length > maxItemsInEachLog) {
 				l.times.frame = l.times.frame.splice(1);
