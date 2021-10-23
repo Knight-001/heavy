@@ -1,0 +1,21 @@
+{
+  "name": "heavy",
+  "version": "0.1.0",
+  "description": "Quick, small, 1 file animation made for fun.",
+  "main": "heavy.js",
+  "bin": "heavy.js",
+  "scripts": {
+    "run": "heavy.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Knight-001/heavy.git"
+  },
+  "keywords": [],
+  "author": "Knight 001",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Knight-001/heavy/issues"
+  },
+  "homepage": "https://github.com/Knight-001/heavy#readme"
+}
