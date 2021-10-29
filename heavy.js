@@ -439,7 +439,6 @@ if (isMainThread) {
 					break;
 				default:
 					if ((a.startsWith("--maxthunders=")) || (a.startsWith("-mt="))) {
-						//thunderColor
 						try {
 							if (a.startsWith("-mt=")) {
 								a = a.substring(4);
