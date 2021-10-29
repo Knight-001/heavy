@@ -35,9 +35,9 @@ f.getColor = function (c = "") {
 		case "dg":
 		case "darkgreen":
 			return "\033[36m";
-		/*case "dr":
-		case "darkred":
-			return "\033[35m";*/
+		case "y":
+		case "yellow":
+			return "\033[93m";
 		case "bg":
 		case "background":
 			return "\033[40m";
@@ -48,9 +48,8 @@ f.getColor = function (c = "") {
 
 f.printAllColorsDontRunMe = function () {
 	for (let x = 0; x < 256; x++) {
-		console.log(" - \033[" + x + "m" + x);
+		console.log(" - \033[" + x + "m" + x + "\033[0m");
 	}
-	console.log("\033[0m");
 	process.exit(0);
 }
 
@@ -114,6 +113,8 @@ f.calcEachImageTotalLength = function (img, array = true) {
 }
 
 let defaultColor = "lb";
+let thunderColor = "white";
+let thunderMax = 5;
 
 if (isMainThread) {
 	let sizeX = process.stdout.columns;
@@ -265,8 +266,7 @@ if (isMainThread) {
 		console.log("\033[0m");
 		console.log(l.calcTimings(true));
 		console.log("'Thunder' compute time is calculated in a worker thread, not in the main one.\n" +
-			"It's the full time the request took from main thread to worker thread + wt compute time.\n" +
-			"You also may have noticed, the thunder part is not implemented yet.");
+			"It's the full time the request took from main thread to worker thread + wt compute time.");
 		process.exit(0);
 	});
 
@@ -357,7 +357,7 @@ if (isMainThread) {
 		}
 		screen = superImposeImage(screen, img.list[0]);
 		if (kaminariNoData.thunder) {
-			screen = superImposeThunder(screen, kaminariNoData.frame);
+			screen = superImposeThunder(screen, kaminariNoData.thunders);
 		}
 		ts = f.getHRTime();
 		// Putting screen back together to write it
@@ -420,16 +420,40 @@ if (isMainThread) {
 				case "--enablelog":
 					logs = true;
 					break;
+				case "-yt":
+				case "--yellowthunders":
+					thunderColor = "yellow";
+					break;
 				case "-h":
 				case "--help":
-					console.log(" --help\t\t[-h]\tonly print this help.\n" +
-						" --noperc\t[-np]\thides bottom right number.\n" +
-						" --nosea\t[-ns]\tdon't draw sea at screen bottom.\n" +
-						" --noimg\t[-ni]\tdon't draw images.\n" +
-						" --imageontop\t[-iot]\tdraw images over rain.\n" +
-						" --enablelog\t[-el]\tdraw perf stats top left.\n" +
-						" -s\t\t\tdon't draw text.");
+					console.log(" --help\t\t\t[-h]\tonly print this help.\n" +
+						" --noperc\t\t[-np]\thides bottom right number.\n" +
+						" --nosea\t\t[-ns]\tdon't draw sea at screen bottom.\n" +
+						" --noimg\t\t[-ni]\tdon't draw images.\n" +
+						" --imageontop\t\t[-iot]\tdraw images over rain.\n" +
+						" --enablelog\t\t[-el]\tdraw perf stats top left.\n" +
+						" --yellowthunders\t[-yt]\tdraw yellow thunders instead of white.\n" +
+						" --maxthunders=x\t[-mt=]\tset max thunders to draw at one time (def: 5).\n" +
+						" -s\t\t\t\tdon't draw text.");
 					process.exit(0);
+					break;
+				default:
+					if ((a.startsWith("--maxthunders=")) || (a.startsWith("-mt="))) {
+						//thunderColor
+						try {
+							if (a.startsWith("-mt=")) {
+								a = a.substring(4);
+							} else {
+								a = a.substring(14);
+							}
+							a = parseInt(a);
+							if (a > 0) {
+								thunderMax = a;
+							}
+						} catch (e) {
+							thunderMax = 5;
+						}
+					}
 					break;
 			}
 		}
@@ -493,8 +517,8 @@ if (isMainThread) {
 		return screen;
 	}
 
-	function superImposeThunder(screen, thunder) {
-		for (let t of thunder) {
+	function superImposeThunder(screen, thunders) {
+		for (let t of thunders) {
 			screen[t.y][t.x] = t.c;
 		}
 		return screen;
@@ -514,6 +538,7 @@ if (isMainThread) {
 					}
 				});
 				resolve(true);
+				askToKNS({todo: "opts", thunderMax: thunderMax, thunderColor: thunderColor});
 			} catch (e) {
 				console.log(e);
 				//restartKaminari(e);
@@ -537,39 +562,53 @@ if (isMainThread) {
 
 	function askForNewThunder() {
 		// Worker thread can't get to process.stdout directly to get the sizes itself
-		kaminariNoShihaisha.postMessage({todo: "thunder", ts: f.getHRTime(), sizeY: sizeY, sizeX: sizeX});
+		askToKNS({todo: "thunder", ts: f.getHRTime(), sizeY: sizeY, sizeX: sizeX});
+	}
+
+	function askToKNS(data) {
+		kaminariNoShihaisha.postMessage(data);
 	}
 
 	checkArgAndStart();
 	//f.printAllColorsDontRunMe();
 } else {
+	let colorReset = f.getColor(defaultColor);
+	let color = f.getColor(thunderColor);
+	let thunderParts = [color + "/" + colorReset, color + "\\" + colorReset];
+
 	parentPort.on('message', (message) => {
 		if (message.todo === "thunder") {
-			let ts = f.getHRTime();
+			//let ts = f.getHRTime();
 			let resp = {
 				ts: message.ts,
 				took: 0,
-				frame: [],
-				thunder: false
+				thunder: false,
+				thunders: []
 			}
 			if (Math.random() > 0.9) {
 				resp.thunder = true;
-				resp.frame = computeThunder(message);
+				resp.thunders = computeThunders(message);
 			}
-			resp.took = f.getHRDifferenceToNow(ts);
+			//resp.took = f.getHRDifferenceToNow(ts);
 			parentPort.postMessage(resp);
+		} else if (message.todo === "opts") {
+			if (message.hasOwnProperty("thunderMax")) {
+				thunderMax = message.thunderMax;
+			}
+			if (message.hasOwnProperty("thunderColor")) {
+				thunderColor = message.thunderColor;
+				color = f.getColor(thunderColor);
+				thunderParts = [color + "/" + colorReset, color + "\\" + colorReset];
+			}
 		}
 	});
-	let colorReset = f.getColor(defaultColor);
-	let color = f.getColor("white");
-	let thunderParts = [color + "/" + colorReset, color + "\\" + colorReset];
 
-	function computeThunder(message) {
+	function computeThunders(message) {
 		let sizeX = message.sizeX;
 		let sizeY = message.sizeY;
 		let thunders = [];
 		let seaLimit = (sizeY > 30) ? f.getMeXPerOf(70, sizeY) : f.getMeXPerOf(80, sizeY);
-		for (let t = 0; t < f.randomIntFromInterval(1, 5); t++) {
+		for (let t = 0; t < f.randomIntFromInterval(1, thunderMax); t++) {
 			let lastX = f.randomIntFromInterval(0, sizeX - 1);
 			for (let y = 0; y < seaLimit; y++) {
 				let nextId = (f.randomIntFromInterval(0, 1) === 0 ? -1 : 1);
