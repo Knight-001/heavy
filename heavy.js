@@ -75,11 +75,49 @@ f.roundWithXZeroes = function (number, decimals) {
 	}
 	n = parseInt(n);
 	return (Math.round(number * n) / n);
+}
+
+f.randomIntFromInterval = function (min, max) {
+	// min and max included
+	return Math.floor(Math.random() * (max - min + 1) + min);
 };
 
+f.calcEachImageTotalLength = function (img, array = true) {
+	// If img is not an array, calc and return it's length, using it to compute thunders created on the fly.
+	if (array) {
+		for (let x = 0; x < img.list.length; x++) {
+			let maxLength = 0;
+			let i = img.list[x];
+			for (let frames of i.frames) {
+				for (let c of frames) {
+					let lineLength = c[0] + c[1].length;
+					if (maxLength < lineLength) {
+						maxLength = lineLength;
+					}
+				}
+			}
+			img.list[x].totalLength = maxLength;
+		}
+		return img;
+	} else {
+		let maxLength = 0;
+		for (let frames of img.frames) {
+			for (let c of frames) {
+				let lineLength = c[0] + c[1].length;
+				if (maxLength < lineLength) {
+					maxLength = lineLength;
+				}
+			}
+		}
+		return maxLength;
+	}
+}
+
+let defaultColor = "lb";
+
 if (isMainThread) {
-	let sizeY = process.stdout.columns;
-	let sizeX = process.stdout.rows;
+	let sizeX = process.stdout.columns;
+	let sizeY = process.stdout.rows;
 	let rainPer = 0.96;
 	let msSleep = 200;
 	let silent = false;
@@ -89,7 +127,6 @@ if (isMainThread) {
 	let imgOnTop = false;
 	let logs = false;
 	let ticks = 0;
-	let defaultColor = "lb";
 	let maxItemsInEachLog = 10000;
 	let kaminariNoShihaisha = false;
 	let kaminariNoData = false;
@@ -259,13 +296,13 @@ if (isMainThread) {
 	//Paint single frame
 	function paintScreen(direction) {
 		let ts = f.getHRTime();
-		sizeY = process.stdout.columns;
-		sizeX = process.stdout.rows;
+		sizeX = process.stdout.columns;
+		sizeY = process.stdout.rows;
 		askForNewThunder();
-		let seaLimit = (sizeX > 30) ? f.getMeXPerOf(70, sizeX) : f.getMeXPerOf(80, sizeX);
+		let seaLimit = (sizeY > 30) ? f.getMeXPerOf(70, sizeY) : f.getMeXPerOf(80, sizeY);
 		let screen = "";
-		for (let x = 0; x < sizeX; x++) {
-			for (let y = 0; y < sizeY; y++) {
+		for (let x = 0; x < sizeY; x++) {
+			for (let y = 0; y < sizeX; y++) {
 				if ((x >= seaLimit) && (seaEnabled)) {
 					let symbols = ["/", "\\"];
 					if (ticks % 2 === 0) {
@@ -318,7 +355,7 @@ if (isMainThread) {
 		if (logs) {
 			screen = l.printLogTopLeft(screen);
 		}
-		screen = superImposeImage(screen);
+		screen = superImposeImage(screen, img.list[0]);
 		if (kaminariNoData.thunder) {
 			screen = superImposeThunder(screen, kaminariNoData.frame);
 		}
@@ -397,31 +434,31 @@ if (isMainThread) {
 			}
 		}
 		enableKaminariNoShihaisha().then();
-		calcEachImageTotalLength();
+		img = f.calcEachImageTotalLength(img); // I could write it but I didn't feel like it
 		// Setting up a bit of delay to allow worker thread to be ready for requests.
 		setTimeout(function () {
 			r().then();
 		}, 100);
 	}
 
-	function superImposeImage(screen) {
+	function superImposeImage(screen, image) {
 		if (!imgEnabled) {
 			return screen;
 		}
 		let ts = f.getHRTime();
-		let i = img.list[img.showingImage];
-		if (img.pos > sizeY) {
+		//let i = img.list[img.showingImage];
+		if (img.pos > sizeX) {
 			img.pos = -200;
 		}
 		let offset = img.pos;
-		if (offset >= -(i.totalLength)) { // Check if I can draw at least part of the image
-			let toInsertAt = (sizeX > 30) ? f.getMeXPerOf(70, sizeX) : f.getMeXPerOf(80, sizeX);
+		if (offset >= -(image.totalLength)) { // Check if I can draw at least part of the image
+			let toInsertAt = (sizeY > 30) ? f.getMeXPerOf(70, sizeY) : f.getMeXPerOf(80, sizeY);
 			let colorReset = f.getColor(defaultColor);
-			let posToInsert = toInsertAt - i.frames[img.showingFrame].length;
-			if ((posToInsert < 0) || (posToInsert > sizeX)) {
+			let posToInsert = toInsertAt - image.frames[img.showingFrame].length;
+			if ((posToInsert < 0) || (posToInsert > sizeY)) {
 				posToInsert = 0;
 			}
-			i = i.frames[img.showingFrame];
+			let i = image.frames[img.showingFrame];
 			for (let line of i) {
 				let lineToChange = screen[posToInsert];
 				for (let x = 0; x < line[1].length; x++) {
@@ -429,7 +466,7 @@ if (isMainThread) {
 					let imgChar = charCommand[1];
 					let color = f.getColor((charCommand[0] !== "" ? charCommand[0] : defaultColor));
 					if ((x + offset + line[0]) <= lineToChange.length) {
-						if ((x + offset + line[0] >= 0) && (x + offset + line[0] < sizeY) && (imgChar !== "")) {
+						if ((x + offset + line[0] >= 0) && (x + offset + line[0] < sizeX) && (imgChar !== "")) {
 							if (
 								(lineToChange[x + offset + line[0]] === "") ||
 								(lineToChange[x + offset + line[0]] === " ") ||
@@ -449,7 +486,7 @@ if (isMainThread) {
 			img.pos++;
 		}
 		img.showingFrame++;
-		if (img.showingFrame >= img.list[img.showingImage].frames.length) {
+		if (img.showingFrame >= image.frames.length) {
 			img.showingFrame = 0;
 		}
 		l.addLog("image", f.getHRDifferenceToNow(ts));
@@ -457,24 +494,10 @@ if (isMainThread) {
 	}
 
 	function superImposeThunder(screen, thunder) {
-		// TODO: Insert thunder into screen, maybe compute it like an image
-		return screen;
-	}
-
-	function calcEachImageTotalLength() {
-		for (let x = 0; x < img.list.length; x++) {
-			let maxLength = 0;
-			let i = img.list[x];
-			for (let frames of i.frames) {
-				for (let c of frames) {
-					let lineLength = c[0] + c[1].length;
-					if (maxLength < lineLength) {
-						maxLength = lineLength;
-					}
-				}
-			}
-			img.list[x].totalLength = maxLength;
+		for (let t of thunder) {
+			screen[t.y][t.x] = t.c;
 		}
+		return screen;
 	}
 
 	async function enableKaminariNoShihaisha() {
@@ -514,7 +537,7 @@ if (isMainThread) {
 
 	function askForNewThunder() {
 		// Worker thread can't get to process.stdout directly to get the sizes itself
-		kaminariNoShihaisha.postMessage({todo: "thunder", ts: f.getHRTime(), sizeX: sizeX, sizeY: sizeY});
+		kaminariNoShihaisha.postMessage({todo: "thunder", ts: f.getHRTime(), sizeY: sizeY, sizeX: sizeX});
 	}
 
 	checkArgAndStart();
@@ -530,21 +553,42 @@ if (isMainThread) {
 				thunder: false
 			}
 			if (Math.random() > 0.9) {
-				// TODO: Compute thunder to pass to main process
 				resp.thunder = true;
-				for (let x = 0; x < message.sizeX; x++) {
-					resp.frame[x] = [];
-					for (let y = 0; y < message.sizeY; y++) {
-						let t = y.toString();
-						if (t.length > 1) {
-							t = t.substring(0, 1);
-						}
-						resp.frame[x].push(t);
-					}
-				}
+				resp.frame = computeThunder(message);
 			}
 			resp.took = f.getHRDifferenceToNow(ts);
 			parentPort.postMessage(resp);
 		}
 	});
+	let colorReset = f.getColor(defaultColor);
+	let color = f.getColor("white");
+	let thunderParts = [color + "/" + colorReset, color + "\\" + colorReset];
+
+	function computeThunder(message) {
+		let sizeX = message.sizeX;
+		let sizeY = message.sizeY;
+		let thunders = [];
+		let seaLimit = (sizeY > 30) ? f.getMeXPerOf(70, sizeY) : f.getMeXPerOf(80, sizeY);
+		for (let t = 0; t < f.randomIntFromInterval(1, 5); t++) {
+			let lastX = f.randomIntFromInterval(0, sizeX - 1);
+			for (let y = 0; y < seaLimit; y++) {
+				let nextId = (f.randomIntFromInterval(0, 1) === 0 ? -1 : 1);
+				let toDraw = "";
+				if (lastX === 0) {
+					nextId = 1;
+				} else if (lastX >= (sizeX - 1)) {
+					nextId = -1;
+				}
+				if (nextId === 1) {
+					toDraw = thunderParts[1];
+				} else {
+					toDraw = thunderParts[0];
+				}
+				lastX += nextId;
+				thunders.push({x: lastX, y: y, c: toDraw});
+			}
+		}
+		return thunders;
+	}
+
 }
