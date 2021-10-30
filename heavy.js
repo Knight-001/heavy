@@ -140,6 +140,7 @@ if (isMainThread) {
 			conv: [],
 			frame: [],
 			computeLog: [],
+			thunderCompute: [],
 			thunder: [],
 		}
 	};
@@ -175,10 +176,17 @@ if (isMainThread) {
 				}
 				break;
 			case "tt":
-			case "thunder": // Total thread thunder compute time
+			case "thunder": // Total thread thunder compute time ( compute time + sending & getting data from thread )
 				l.times.thunder.push(ts);
 				if (l.times.thunder.length > maxItemsInEachLog) {
 					l.times.thunder = l.times.thunder.splice(1);
+				}
+				break;
+			case "ttc":
+			case "thunderCompute": // Only thunder compute time ( no sending & getting data from thread )
+				l.times.thunderCompute.push(ts);
+				if (l.times.thunderCompute.length > maxItemsInEachLog) {
+					l.times.thunderCompute = l.times.thunderCompute.splice(1);
 				}
 				break;
 			case "cl":
@@ -198,6 +206,7 @@ if (isMainThread) {
 		let conv = l.calcSingleTime(l.times.conv);
 		let log = l.calcSingleTime(l.times.computeLog);
 		let frameTime = l.calcSingleTime(l.times.frame);
+		let thunderCompute = l.calcSingleTime(l.times.thunderCompute);
 		let thunder = l.calcSingleTime(l.times.thunder);
 
 		if (wantString) {
@@ -205,7 +214,8 @@ if (isMainThread) {
 				"averageImageComputeTime:\t" + image.averageComputeTime + "ms\t(on " + image.loggedItems + " samples)\n" +
 				"averageConvComputeTime:  \t" + conv.averageComputeTime + "ms\t(on " + conv.loggedItems + " samples)\n" +
 				"averageLogComputeTime:  \t" + log.averageComputeTime + "ms\t(on " + log.loggedItems + " samples)\n" +
-				"averageThunderComputeTime:  \t" + thunder.averageComputeTime + "ms\t(on " + thunder.loggedItems + " samples)\n" +
+				"averageThunderComputeTime:  \t" + thunderCompute.averageComputeTime + "ms\t(on " + thunderCompute.loggedItems + " samples)\n" +
+				"averageThunderTotalTime:  \t" + thunder.averageComputeTime + "ms\t(on " + thunder.loggedItems + " samples)\n" +
 				"averageFrameComputeTime:  \t" + frameTime.averageComputeTime + "ms\t(on " + frameTime.loggedItems + " samples)";
 		}
 		return {
@@ -217,8 +227,10 @@ if (isMainThread) {
 			loggedConvItems: conv.loggedItems,
 			averageLogComputeTime: log.averageComputeTime,
 			loggedLogItems: log.loggedItems,
-			averageThunderComputeTime: thunder.averageComputeTime,
-			loggedThunderItems: thunder.loggedItems,
+			averageThunderComputeTime: thunderCompute.averageComputeTime,
+			loggedThunderComputeItems: thunderCompute.loggedItems,
+			averageThunderTotalTime: thunder.averageComputeTime,
+			loggedThunderTotalItems: thunder.loggedItems,
 			averageFrameComputeTime: frameTime.averageComputeTime,
 			loggedFrameItems: frameTime.loggedItems
 		};
@@ -243,10 +255,11 @@ if (isMainThread) {
 			"avg img:   (" + timings.loggedImageItems + ") " + timings.averageImageComputeTime + "ms",
 			"avg conv:  (" + timings.loggedConvItems + ") " + timings.averageConvComputeTime + "ms",
 			"avg log:   (" + timings.loggedLogItems + ") " + timings.averageLogComputeTime + "ms",
-			"avg thund: (" + timings.loggedThunderItems + ") " + timings.averageThunderComputeTime + "ms",
+			"avg thu-c: (" + timings.loggedThunderComputeItems + ") " + timings.averageThunderComputeTime + "ms",
+			"avg thu-t: (" + timings.loggedThunderTotalItems + ") " + timings.averageThunderTotalTime + "ms",
 			"avg frame: (" + timings.loggedFrameItems + ") " + timings.averageFrameComputeTime + "ms"];
-		if (screen.length >= 6) {
-			for (let y = 0; y < 6; y++) {
+		if (screen.length >= lines.length) {
+			for (let y = 0; y < lines.length; y++) {
 				let line = screen[y];
 				lines[y] = lines[y].split("");
 				for (let x = 0; x < lines[y].length; x++) {
@@ -265,8 +278,8 @@ if (isMainThread) {
 	process.on('SIGINT', function () {
 		console.log("\033[0m");
 		console.log(l.calcTimings(true));
-		console.log("'Thunder' compute time is calculated in a worker thread, not in the main one.\n" +
-			"It's the full time the request took from main thread to worker thread + wt compute time.");
+		console.log("'Thunder compute'\t(thu-c) time is calculated in a worker thread, not in the main one.\n" +
+			"'Thunder total'\t\t(thu-t) is the full time the request took from main thread asking for thunder to worker thread delivering the data.");
 		process.exit(0);
 	});
 
@@ -298,7 +311,6 @@ if (isMainThread) {
 		let ts = f.getHRTime();
 		sizeX = process.stdout.columns;
 		sizeY = process.stdout.rows;
-		askForNewThunder();
 		let seaLimit = (sizeY > 30) ? f.getMeXPerOf(70, sizeY) : f.getMeXPerOf(80, sizeY);
 		let screen = "";
 		for (let x = 0; x < sizeY; x++) {
@@ -390,6 +402,9 @@ if (isMainThread) {
 			let ts = f.getHRTime();
 			paintScreen(rainDir);
 			l.addLog("frame", (f.getHRDifferenceToNow(ts)));
+			askForNewThunder(); // Moved here to allow the thread to work in main's off-time.
+								// This will ensure main process always has fresh data
+								// since threads data exchange seems to take so much time.
 			await f.sleep(msSleep);
 		}
 	}
@@ -547,7 +562,7 @@ if (isMainThread) {
 
 	function parseKaminariData(data) {
 		l.addLog("tt", f.getHRDifferenceToNow(data.ts));
-		//l.addLog("tt", data.took);
+		l.addLog("ttc", data.took);
 		kaminariNoData = data;
 	}
 
@@ -577,7 +592,7 @@ if (isMainThread) {
 
 	parentPort.on('message', (message) => {
 		if (message.todo === "thunder") {
-			//let ts = f.getHRTime();
+			let ts = f.getHRTime();
 			let resp = {
 				ts: message.ts,
 				took: 0,
@@ -588,7 +603,7 @@ if (isMainThread) {
 				resp.thunder = true;
 				resp.thunders = computeThunders(message);
 			}
-			//resp.took = f.getHRDifferenceToNow(ts);
+			resp.took = f.getHRDifferenceToNow(ts);
 			parentPort.postMessage(resp);
 		} else if (message.todo === "opts") {
 			if (message.hasOwnProperty("thunderMax")) {
