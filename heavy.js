@@ -128,129 +128,24 @@ if (isMainThread) {
 	let imgOnTop = false;
 	let logs = false;
 	let ticks = 0;
-	let maxItemsInEachLog = 10000;
-	let kaminariNoShihaisha = false;
-	let kaminariNoData = false;
+	let workers = {
+		kaminariNoShihaisha: false,
+		kaminariNoData: false,
+		logger: false,
+		loggerData: false
+	}
+	let cachedLogs = [];
 
-	// Logging functions
-	let l = {
-		times: {
-			rain: [],
-			image: [],
-			conv: [],
-			frame: [],
-			computeLog: [],
-			thunderCompute: [],
-			thunder: [],
-		}
-	};
-
-	l.addLog = function (type, ts) {
-		switch (type) {
-			case "r":
-			case "rain": // Time used to calculate full screen worth of rain and sea
-				l.times.rain.push(ts);
-				if (l.times.rain.length > maxItemsInEachLog) {
-					l.times.rain = l.times.rain.splice(1);
-				}
-				break;
-			case "i":
-			case "image": // Time used to write the images from img.list on the screen
-				l.times.image.push(ts);
-				if (l.times.image.length > maxItemsInEachLog) {
-					l.times.image = l.times.image.splice(1);
-				}
-				break;
-			case "c":
-			case "conv": // Conversion overhead
-				l.times.conv.push(ts);
-				if (l.times.conv.length > maxItemsInEachLog) {
-					l.times.conv = l.times.conv.splice(1);
-				}
-				break;
-			case "f":
-			case "frame": // Total single frame time
-				l.times.frame.push(ts);
-				if (l.times.frame.length > maxItemsInEachLog) {
-					l.times.frame = l.times.frame.splice(1);
-				}
-				break;
-			case "tt":
-			case "thunder": // Total thread thunder compute time ( compute time + sending & getting data from thread )
-				l.times.thunder.push(ts);
-				if (l.times.thunder.length > maxItemsInEachLog) {
-					l.times.thunder = l.times.thunder.splice(1);
-				}
-				break;
-			case "ttc":
-			case "thunderCompute": // Only thunder compute time ( no sending & getting data from thread )
-				l.times.thunderCompute.push(ts);
-				if (l.times.thunderCompute.length > maxItemsInEachLog) {
-					l.times.thunderCompute = l.times.thunderCompute.splice(1);
-				}
-				break;
-			case "cl":
-			case "computeLog": // Total time used on calculating onscreen logs if enabled
-				l.times.computeLog.push(ts);
-				if (l.times.computeLog.length > maxItemsInEachLog) {
-					l.times.computeLog = l.times.computeLog.splice(1);
-				}
-				break;
-		}
+	function addLogToCache(type, ts) {
+		cachedLogs.push({type: type, ts: ts});
 	}
 
-	l.calcTimings = function (wantString = false) {
-		// Times are in ms
-		let rain = l.calcSingleTime(l.times.rain);
-		let image = l.calcSingleTime(l.times.image);
-		let conv = l.calcSingleTime(l.times.conv);
-		let log = l.calcSingleTime(l.times.computeLog);
-		let frameTime = l.calcSingleTime(l.times.frame);
-		let thunderCompute = l.calcSingleTime(l.times.thunderCompute);
-		let thunder = l.calcSingleTime(l.times.thunder);
-
-		if (wantString) {
-			return "averageRainComputeTime: \t" + rain.averageComputeTime + "ms\t(on " + rain.loggedItems + " samples)\n" +
-				"averageImageComputeTime:\t" + image.averageComputeTime + "ms\t(on " + image.loggedItems + " samples)\n" +
-				"averageConvComputeTime:  \t" + conv.averageComputeTime + "ms\t(on " + conv.loggedItems + " samples)\n" +
-				"averageLogComputeTime:  \t" + log.averageComputeTime + "ms\t(on " + log.loggedItems + " samples)\n" +
-				"averageThunderComputeTime:  \t" + thunderCompute.averageComputeTime + "ms\t(on " + thunderCompute.loggedItems + " samples)\n" +
-				"averageThunderTotalTime:  \t" + thunder.averageComputeTime + "ms\t(on " + thunder.loggedItems + " samples)\n" +
-				"averageFrameComputeTime:  \t" + frameTime.averageComputeTime + "ms\t(on " + frameTime.loggedItems + " samples)";
+	function printLogTopLeft(screen) {
+		if (workers.loggerData === false) {
+			return screen;
 		}
-		return {
-			averageRainComputeTime: rain.averageComputeTime,
-			loggedRainItems: rain.loggedItems,
-			averageImageComputeTime: image.averageComputeTime,
-			loggedImageItems: image.loggedItems,
-			averageConvComputeTime: conv.averageComputeTime,
-			loggedConvItems: conv.loggedItems,
-			averageLogComputeTime: log.averageComputeTime,
-			loggedLogItems: log.loggedItems,
-			averageThunderComputeTime: thunderCompute.averageComputeTime,
-			loggedThunderComputeItems: thunderCompute.loggedItems,
-			averageThunderTotalTime: thunder.averageComputeTime,
-			loggedThunderTotalItems: thunder.loggedItems,
-			averageFrameComputeTime: frameTime.averageComputeTime,
-			loggedFrameItems: frameTime.loggedItems
-		};
-	}
-
-	l.calcSingleTime = function (thingToCompute) {
-		let averageComputeTime = 0;
-		let loggedItems = thingToCompute.length;
-		for (let i of thingToCompute) {
-			averageComputeTime += i;
-		}
-		// First time it will output NaN as there are no logged items, it's acceptable since the alternatives would be
-		// to implement a check slowing down the processing
-		averageComputeTime = f.roundWithXZeroes(averageComputeTime / loggedItems, 6);
-		return {averageComputeTime: averageComputeTime, loggedItems: loggedItems};
-	}
-
-	l.printLogTopLeft = function (screen) {
 		let ts = f.getHRTime();
-		let timings = l.calcTimings();
+		let timings = workers.loggerData.obj;
 		let lines = ["avg rain:  (" + timings.loggedRainItems + ") " + timings.averageRainComputeTime + "ms",
 			"avg img:   (" + timings.loggedImageItems + ") " + timings.averageImageComputeTime + "ms",
 			"avg conv:  (" + timings.loggedConvItems + ") " + timings.averageConvComputeTime + "ms",
@@ -270,14 +165,14 @@ if (isMainThread) {
 				screen[y] = line;
 			}
 		}
-		l.addLog("cl", f.getHRDifferenceToNow(ts));
+		addLogToCache("cl", f.getHRDifferenceToNow(ts));
 		return screen;
 	}
 
 	//Fix text when closing
 	process.on('SIGINT', function () {
 		console.log("\033[0m");
-		console.log(l.calcTimings(true));
+		console.log(workers.loggerData.str);
 		console.log("'Thunder compute'\t(thu-c) time is calculated in a worker thread, not in the main one.\n" +
 			"'Thunder total'\t\t(thu-t) is the full time the request took from main thread asking for thunder to worker thread delivering the data.");
 		process.exit(0);
@@ -356,7 +251,7 @@ if (isMainThread) {
 			screen = screen.substring(0, ((screen.length - toAdd.toString().length) - 1)) +
 				"\033[33m" + toAdd + "\033[34m";
 		}
-		l.addLog("rain", f.getHRDifferenceToNow(ts));
+		addLogToCache("rain", f.getHRDifferenceToNow(ts));
 		ts = f.getHRTime();
 		// Prepare screen into matrix to avoid computing same thing multiple times for later manipulation
 		screen = screen.split("\n");
@@ -365,11 +260,11 @@ if (isMainThread) {
 		}
 		let timeDiff = f.getHRDifferenceToNow(ts);
 		if (logs) {
-			screen = l.printLogTopLeft(screen);
+			screen = printLogTopLeft(screen);
 		}
 		screen = superImposeImage(screen, img.list[0]);
-		if (kaminariNoData.thunder) {
-			screen = superImposeThunder(screen, kaminariNoData.thunders);
+		if (workers.kaminariNoData.thunder) {
+			screen = superImposeThunder(screen, workers.kaminariNoData.thunders);
 		}
 		ts = f.getHRTime();
 		// Putting screen back together to write it
@@ -377,7 +272,7 @@ if (isMainThread) {
 			screen[x] = screen[x].join("");
 		}
 		screen = screen.join("\n");
-		l.addLog("conv", (timeDiff + f.getHRDifferenceToNow(ts)));
+		addLogToCache("conv", (timeDiff + f.getHRDifferenceToNow(ts)));
 		process.stdout.write(screen);
 	}
 
@@ -401,11 +296,13 @@ if (isMainThread) {
 			ticks++;
 			let ts = f.getHRTime();
 			paintScreen(rainDir);
-			l.addLog("frame", (f.getHRDifferenceToNow(ts)));
+			let toWaitFor = f.sleep(msSleep);// First set timeout, then talk to threads, and lastly wait for timeout to end.
+			addLogToCache("frame", (f.getHRDifferenceToNow(ts)));
 			askForNewThunder(); // Moved here to allow the thread to work in main's off-time.
 								// This will ensure main process always has fresh data
 								// since threads data exchange seems to take so much time.
-			await f.sleep(msSleep);
+			flushLogCacheToThread();
+			await toWaitFor;
 		}
 	}
 
@@ -471,6 +368,7 @@ if (isMainThread) {
 					break;
 			}
 		}
+		enableLoggerThread().then();
 		enableKaminariNoShihaisha().then();
 		img = f.calcEachImageTotalLength(img); // I could write it but I didn't feel like it
 		// Setting up a bit of delay to allow worker thread to be ready for requests.
@@ -527,7 +425,7 @@ if (isMainThread) {
 		if (img.showingFrame >= image.frames.length) {
 			img.showingFrame = 0;
 		}
-		l.addLog("image", f.getHRDifferenceToNow(ts));
+		addLogToCache("image", f.getHRDifferenceToNow(ts));
 		return screen;
 	}
 
@@ -541,14 +439,14 @@ if (isMainThread) {
 	async function enableKaminariNoShihaisha() {
 		return new Promise(async (resolve) => {
 			try {
-				kaminariNoShihaisha = new Worker(__filename);
-				kaminariNoShihaisha.on('message', parseKaminariData);
-				kaminariNoShihaisha.on('error', function (err) {
+				workers.kaminariNoShihaisha = new Worker(__filename);
+				workers.kaminariNoShihaisha.on('message', parseKaminariData);
+				workers.kaminariNoShihaisha.on('error', function (err) {
 					restartKaminari(err);
 				});
-				kaminariNoShihaisha.on('exit', (code) => {
+				workers.kaminariNoShihaisha.on('exit', (code) => {
 					if (code !== 0) {
-						throw new Error("Worker stopped with exit code " + code);
+						throw new Error("KaminariNoShihaisha stopped with exit code " + code);
 					}
 				});
 				resolve(true);
@@ -560,17 +458,49 @@ if (isMainThread) {
 		});
 	}
 
+	async function enableLoggerThread() {
+		return new Promise(async (resolve) => {
+			try {
+				workers.logger = new Worker(__filename);
+				workers.logger.on('message', parseLoggerData);
+				workers.logger.on('error', function (err) {
+					restartLogger(err);
+				});
+				workers.logger.on('exit', (code) => {
+					if (code !== 0) {
+						throw new Error("Logger stopped with exit code " + code);
+					}
+				});
+				resolve(true);
+			} catch (e) {
+				console.log(e);
+			}
+		});
+	}
+
 	function parseKaminariData(data) {
-		l.addLog("tt", f.getHRDifferenceToNow(data.ts));
-		l.addLog("ttc", data.took);
-		kaminariNoData = data;
+		addLogToCache("tt", f.getHRDifferenceToNow(data.ts));
+		addLogToCache("ttc", data.took);
+		workers.kaminariNoData = data;
+	}
+
+	function parseLoggerData(data) {
+		workers.loggerData = data;
 	}
 
 	function restartKaminari(error) {
 		if (error) {
 			console.log(error);
-			kaminariNoShihaisha = false;
+			workers.kaminariNoShihaisha = false;
 			enableKaminariNoShihaisha().then();
+		}
+	}
+
+	function restartLogger(error) {
+		if (error) {
+			console.log(error);
+			workers.logger = false;
+			enableLoggerThread().then();
 		}
 	}
 
@@ -580,16 +510,25 @@ if (isMainThread) {
 	}
 
 	function askToKNS(data) {
-		kaminariNoShihaisha.postMessage(data);
+		workers.kaminariNoShihaisha.postMessage(data);
+	}
+
+	function flushLogCacheToThread() {
+		askToLogger({todo: "loggerAddLogs", logs: cachedLogs});
+		cachedLogs = [];
+	}
+
+	function calcTimings() {
+		askToLogger({todo: "loggerCalcTimings"});
+	}
+
+	function askToLogger(data) {
+		workers.logger.postMessage(data);
 	}
 
 	checkArgAndStart();
 	//f.printAllColorsDontRunMe();
 } else {
-	let colorReset = f.getColor(defaultColor);
-	let color = f.getColor(thunderColor);
-	let thunderParts = [color + "/" + colorReset, color + "\\" + colorReset];
-
 	parentPort.on('message', (message) => {
 		if (message.todo === "thunder") {
 			let ts = f.getHRTime();
@@ -605,6 +544,19 @@ if (isMainThread) {
 			}
 			resp.took = f.getHRDifferenceToNow(ts);
 			parentPort.postMessage(resp);
+		} else if (message.todo.startsWith("logger")) {
+			let todo = message.todo.substring(6);
+			switch (todo) {
+				case "CalcTimings":
+					parentPort.postMessage(l.calcTimings());
+					break;
+				case "AddLogs":
+					for (let log of message.logs) {
+						l.addLog(log.type, log.ts);
+					}
+					parentPort.postMessage(l.calcTimings());
+					break;
+			}
 		} else if (message.todo === "opts") {
 			if (message.hasOwnProperty("thunderMax")) {
 				thunderMax = message.thunderMax;
@@ -616,6 +568,11 @@ if (isMainThread) {
 			}
 		}
 	});
+
+	//KaminariNoShihaisha
+	let colorReset = f.getColor(defaultColor);
+	let color = f.getColor(thunderColor);
+	let thunderParts = [color + "/" + colorReset, color + "\\" + colorReset];
 
 	function computeThunders(message) {
 		let sizeX = message.sizeX;
@@ -642,6 +599,124 @@ if (isMainThread) {
 			}
 		}
 		return thunders;
+	}
+
+
+	let maxItemsInEachLog = 10000;
+	// Logger
+	let l = {
+		times: {
+			rain: [],
+			image: [],
+			conv: [],
+			frame: [],
+			computeLog: [],
+			thunderCompute: [],
+			thunder: [],
+		}
+	};
+
+	l.addLog = function (type, ts) {
+		switch (type) {
+			case "r":
+			case "rain": // Time used to calculate full screen worth of rain and sea
+				l.times.rain.push(ts);
+				if (l.times.rain.length > maxItemsInEachLog) {
+					l.times.rain = l.times.rain.splice(1);
+				}
+				break;
+			case "i":
+			case "image": // Time used to write the images from img.list on the screen
+				l.times.image.push(ts);
+				if (l.times.image.length > maxItemsInEachLog) {
+					l.times.image = l.times.image.splice(1);
+				}
+				break;
+			case "c":
+			case "conv": // Conversion overhead
+				l.times.conv.push(ts);
+				if (l.times.conv.length > maxItemsInEachLog) {
+					l.times.conv = l.times.conv.splice(1);
+				}
+				break;
+			case "f":
+			case "frame": // Total single frame time
+				l.times.frame.push(ts);
+				if (l.times.frame.length > maxItemsInEachLog) {
+					l.times.frame = l.times.frame.splice(1);
+				}
+				break;
+			case "tt":
+			case "thunder": // Total thread thunder compute time ( compute time + sending & getting data from thread )
+				l.times.thunder.push(ts);
+				if (l.times.thunder.length > maxItemsInEachLog) {
+					l.times.thunder = l.times.thunder.splice(1);
+				}
+				break;
+			case "ttc":
+			case "thunderCompute": // Only thunder compute time ( no sending & getting data from thread )
+				l.times.thunderCompute.push(ts);
+				if (l.times.thunderCompute.length > maxItemsInEachLog) {
+					l.times.thunderCompute = l.times.thunderCompute.splice(1);
+				}
+				break;
+			case "cl":
+			case "computeLog": // Total time used on calculating onscreen logs if enabled
+				l.times.computeLog.push(ts);
+				if (l.times.computeLog.length > maxItemsInEachLog) {
+					l.times.computeLog = l.times.computeLog.splice(1);
+				}
+				break;
+		}
+	}
+
+	l.calcTimings = function () {
+		// Times are in ms
+		let rain = l.calcSingleTime(l.times.rain);
+		let image = l.calcSingleTime(l.times.image);
+		let conv = l.calcSingleTime(l.times.conv);
+		let log = l.calcSingleTime(l.times.computeLog);
+		let frameTime = l.calcSingleTime(l.times.frame);
+		let thunderCompute = l.calcSingleTime(l.times.thunderCompute);
+		let thunder = l.calcSingleTime(l.times.thunder);
+
+		return {
+			str: "averageRainComputeTime: \t" + rain.averageComputeTime + "ms\t(on " + rain.loggedItems + " samples)\n" +
+				"averageImageComputeTime:\t" + image.averageComputeTime + "ms\t(on " + image.loggedItems + " samples)\n" +
+				"averageConvComputeTime:  \t" + conv.averageComputeTime + "ms\t(on " + conv.loggedItems + " samples)\n" +
+				"averageLogComputeTime:  \t" + log.averageComputeTime + "ms\t(on " + log.loggedItems + " samples)\n" +
+				"averageThunderComputeTime:  \t" + thunderCompute.averageComputeTime + "ms\t(on " + thunderCompute.loggedItems + " samples)\n" +
+				"averageThunderTotalTime:  \t" + thunder.averageComputeTime + "ms\t(on " + thunder.loggedItems + " samples)\n" +
+				"averageFrameComputeTime:  \t" + frameTime.averageComputeTime + "ms\t(on " + frameTime.loggedItems + " samples)",
+			obj: {
+				averageRainComputeTime: rain.averageComputeTime,
+				loggedRainItems: rain.loggedItems,
+				averageImageComputeTime: image.averageComputeTime,
+				loggedImageItems: image.loggedItems,
+				averageConvComputeTime: conv.averageComputeTime,
+				loggedConvItems: conv.loggedItems,
+				averageLogComputeTime: log.averageComputeTime,
+				loggedLogItems: log.loggedItems,
+				averageThunderComputeTime: thunderCompute.averageComputeTime,
+				loggedThunderComputeItems: thunderCompute.loggedItems,
+				averageThunderTotalTime: thunder.averageComputeTime,
+				loggedThunderTotalItems: thunder.loggedItems,
+				averageFrameComputeTime: frameTime.averageComputeTime,
+				loggedFrameItems: frameTime.loggedItems
+			}
+		}
+	}
+
+	l.calcSingleTime = function (thingToCompute) {
+		let averageComputeTime = 0;
+		let loggedItems = thingToCompute.length;
+		for (let i of thingToCompute) {
+			averageComputeTime += i;
+		}
+		// First time it will output NaN as there are no logged items, it's acceptable since the alternatives would be
+		// to implement a check slowing down the processing
+		averageComputeTime = f.roundWithXZeroes(averageComputeTime / loggedItems, 6);
+		return {averageComputeTime: averageComputeTime, loggedItems: loggedItems};
 	}
 
 }
