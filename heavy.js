@@ -202,7 +202,7 @@ if (isMainThread) {
 	}];
 
 	//Paint single frame
-	function paintScreen(direction) {
+	function calculateFrame(direction) {
 		let ts = f.getHRTime();
 		sizeX = process.stdout.columns;
 		sizeY = process.stdout.rows;
@@ -273,14 +273,15 @@ if (isMainThread) {
 		}
 		screen = screen.join("\n");
 		addLogToCache("conv", (timeDiff + f.getHRDifferenceToNow(ts)));
-		process.stdout.write(screen);
+		return screen;
 	}
 
 	async function r() {
-		console.log(f.getColor("background") + f.getColor(defaultColor));
 		let rainDir = "right";
+		let frame = f.getColor("background") + f.getColor(defaultColor) + "\n";
 		while (true) {
 			let toWaitFor = f.sleep(msSleep);// Let's try to always keep the frames on time.
+			process.stdout.write(frame);
 			if (ticks >= 10) {
 				if (rainDir === "right") {
 					rainPer = f.roundTo3(rainPer - 0.001);
@@ -296,7 +297,7 @@ if (isMainThread) {
 			}
 			ticks++;
 			let ts = f.getHRTime();
-			paintScreen(rainDir);
+			frame = calculateFrame(rainDir);
 			addLogToCache("frame", (f.getHRDifferenceToNow(ts)));
 			askForNewThunder(); // Moved here to allow the thread to work in main's off-time.
 								// This will ensure main process always has fresh data
