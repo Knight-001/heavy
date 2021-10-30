@@ -280,6 +280,7 @@ if (isMainThread) {
 		console.log(f.getColor("background") + f.getColor(defaultColor));
 		let rainDir = "right";
 		while (true) {
+			let toWaitFor = f.sleep(msSleep);// Let's try to always keep the frames on time.
 			if (ticks >= 10) {
 				if (rainDir === "right") {
 					rainPer = f.roundTo3(rainPer - 0.001);
@@ -296,7 +297,6 @@ if (isMainThread) {
 			ticks++;
 			let ts = f.getHRTime();
 			paintScreen(rainDir);
-			let toWaitFor = f.sleep(msSleep);// First set timeout, then talk to threads, and lastly wait for timeout to end.
 			addLogToCache("frame", (f.getHRDifferenceToNow(ts)));
 			askForNewThunder(); // Moved here to allow the thread to work in main's off-time.
 								// This will ensure main process always has fresh data
