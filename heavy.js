@@ -135,6 +135,8 @@ if (isMainThread) {
 		loggerData: false
 	}
 	let cachedLogs = [];
+	let forceSizeX = -1;
+	let forceSizeY = -1;
 
 	function addLogToCache(type, ts) {
 		cachedLogs.push({type: type, ts: ts});
@@ -204,8 +206,8 @@ if (isMainThread) {
 	//Paint single frame
 	function calculateFrame(direction) {
 		let ts = f.getHRTime();
-		sizeX = process.stdout.columns;
-		sizeY = process.stdout.rows;
+		sizeX = (forceSizeX > 0) ? forceSizeX : process.stdout.columns;
+		sizeY = (forceSizeY > 0) ? forceSizeY : process.stdout.rows;
 		let seaLimit = (sizeY > 30) ? f.getMeXPerOf(70, sizeY) : f.getMeXPerOf(80, sizeY);
 		let screen = "";
 		for (let x = 0; x < sizeY; x++) {
@@ -353,17 +355,26 @@ if (isMainThread) {
 				default:
 					if ((a.startsWith("--maxthunders=")) || (a.startsWith("-mt="))) {
 						try {
-							if (a.startsWith("-mt=")) {
-								a = a.substring(4);
-							} else {
-								a = a.substring(14);
-							}
+							a = (a.startsWith("-mt=")) ? a.substring(4) : a.substring(14);
 							a = parseInt(a);
 							if (a > 0) {
 								thunderMax = a;
 							}
 						} catch (e) {
 							thunderMax = 5;
+						}
+					} else if ((a.startsWith("-x")) || (a.startsWith("-y"))) {
+						let changeX = (a.startsWith("-x"));
+						a = a.substring(2);
+						if (a.startsWith("=")) {
+							a = a.substring(1);
+						}
+						a = parseInt(a);
+						let val = (((a < 0) || (isNaN(a))) ? -1 : a);
+						if (changeX) {
+							forceSizeX = val;
+						} else {
+							forceSizeY = val;
 						}
 					}
 					break;
