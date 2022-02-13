@@ -137,6 +137,7 @@ if (isMainThread) {
 	let cachedLogs = [];
 	let forceSizeX = -1;
 	let forceSizeY = -1;
+	let thunderEnabled = true;
 
 	function addLogToCache(type, ts) {
 		cachedLogs.push({type: type, ts: ts});
@@ -151,10 +152,12 @@ if (isMainThread) {
 		let lines = ["avg rain:  (" + timings.loggedRainItems + ") " + timings.averageRainComputeTime + "ms",
 			"avg img:   (" + timings.loggedImageItems + ") " + timings.averageImageComputeTime + "ms",
 			"avg conv:  (" + timings.loggedConvItems + ") " + timings.averageConvComputeTime + "ms",
-			"avg log:   (" + timings.loggedLogItems + ") " + timings.averageLogComputeTime + "ms",
-			"avg thu-c: (" + timings.loggedThunderComputeItems + ") " + timings.averageThunderComputeTime + "ms",
-			"avg thu-t: (" + timings.loggedThunderTotalItems + ") " + timings.averageThunderTotalTime + "ms",
-			"avg frame: (" + timings.loggedFrameItems + ") " + timings.averageFrameComputeTime + "ms"];
+			"avg log:   (" + timings.loggedLogItems + ") " + timings.averageLogComputeTime + "ms"];
+		if (thunderEnabled) {
+			lines.push("avg thu-c: (" + timings.loggedThunderComputeItems + ") " + timings.averageThunderComputeTime + "ms",
+				"avg thu-t: (" + timings.loggedThunderTotalItems + ") " + timings.averageThunderTotalTime + "ms");
+		}
+		lines.push("avg frame: (" + timings.loggedFrameItems + ") " + timings.averageFrameComputeTime + "ms");
 		if (screen.length >= lines.length) {
 			for (let y = 0; y < lines.length; y++) {
 				let line = screen[y];
@@ -301,9 +304,12 @@ if (isMainThread) {
 			let ts = f.getHRTime();
 			frame = calculateFrame(rainDir);
 			addLogToCache("frame", (f.getHRDifferenceToNow(ts)));
-			askForNewThunder(); // Moved here to allow the thread to work in main's off-time.
-								// This will ensure main process always has fresh data
-								// since threads data exchange seems to take so much time.
+			if (thunderEnabled) {
+				// Moved here to allow the thread to work in main's off-time.
+				// This will ensure main process always has fresh data
+				// since threads data exchange seems to take so much time.
+				askForNewThunder();
+			}
 			flushLogCacheToThread();
 			await toWaitFor;
 		}
@@ -339,6 +345,10 @@ if (isMainThread) {
 				case "--yellowthunders":
 					thunderColor = "yellow";
 					break;
+				case "-dt":
+				case "--disablethunders":
+					thunderEnabled = false;
+					break;
 				case "-h":
 				case "--help":
 					console.log(" --help\t\t\t[-h]\tonly print this help.\n" +
@@ -349,6 +359,7 @@ if (isMainThread) {
 						" --enablelog\t\t[-el]\tdraw perf stats top left.\n" +
 						" --yellowthunders\t[-yt]\tdraw yellow thunders instead of white.\n" +
 						" --maxthunders=x\t[-mt=]\tset max thunders to draw at one time (def: 5).\n" +
+						" --disablethunders [-dt]\tdisable thunders.\n" +
 						" -s\t\t\t\tdon't draw text.");
 					process.exit(0);
 					break;
@@ -381,7 +392,9 @@ if (isMainThread) {
 			}
 		}
 		enableLoggerThread().then();
-		enableKaminariNoShihaisha().then();
+		if (thunderEnabled) {
+			enableKaminariNoShihaisha().then();
+		}
 		img = f.calcEachImageTotalLength(img); // I could write it but I didn't feel like it
 		// Setting up a bit of delay to allow worker thread to be ready for requests.
 		setTimeout(function () {
@@ -692,14 +705,19 @@ if (isMainThread) {
 		let thunderCompute = l.calcSingleTime(l.times.thunderCompute);
 		let thunder = l.calcSingleTime(l.times.thunder);
 
+		let str = "averageRainComputeTime: \t" + rain.averageComputeTime + "ms\t(on " + rain.loggedItems + " samples)\n" +
+			"averageImageComputeTime:\t" + image.averageComputeTime + "ms\t(on " + image.loggedItems + " samples)\n" +
+			"averageConvComputeTime:  \t" + conv.averageComputeTime + "ms\t(on " + conv.loggedItems + " samples)\n" +
+			"averageLogComputeTime:  \t" + log.averageComputeTime + "ms\t(on " + log.loggedItems + " samples)\n";
+		if (thunder > 0) {
+			str += "averageThunderComputeTime:  \t" + thunderCompute.averageComputeTime + "ms\t(on " +
+				thunderCompute.loggedItems + " samples)\n" +
+				"averageThunderTotalTime:  \t" + thunder.averageComputeTime + "ms\t(on " +
+				thunder.loggedItems + " samples)\n";
+		}
+		str += "averageFrameComputeTime:  \t" + frameTime.averageComputeTime + "ms\t(on " + frameTime.loggedItems + " samples)";
 		return {
-			str: "averageRainComputeTime: \t" + rain.averageComputeTime + "ms\t(on " + rain.loggedItems + " samples)\n" +
-				"averageImageComputeTime:\t" + image.averageComputeTime + "ms\t(on " + image.loggedItems + " samples)\n" +
-				"averageConvComputeTime:  \t" + conv.averageComputeTime + "ms\t(on " + conv.loggedItems + " samples)\n" +
-				"averageLogComputeTime:  \t" + log.averageComputeTime + "ms\t(on " + log.loggedItems + " samples)\n" +
-				"averageThunderComputeTime:  \t" + thunderCompute.averageComputeTime + "ms\t(on " + thunderCompute.loggedItems + " samples)\n" +
-				"averageThunderTotalTime:  \t" + thunder.averageComputeTime + "ms\t(on " + thunder.loggedItems + " samples)\n" +
-				"averageFrameComputeTime:  \t" + frameTime.averageComputeTime + "ms\t(on " + frameTime.loggedItems + " samples)",
+			str: str,
 			obj: {
 				averageRainComputeTime: rain.averageComputeTime,
 				loggedRainItems: rain.loggedItems,
